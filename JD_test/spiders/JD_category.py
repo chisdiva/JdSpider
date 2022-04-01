@@ -1,8 +1,10 @@
 import scrapy
 import json
-from JD_test.items import Category
+#from JD_test.items import Category
+from JD_test.items import JdCategory, MediumJdCategory, SmallJdCategory
 
 import re
+import pymongo
 
 '''
 class JdCategorySpider(scrapy.Spider):
@@ -69,28 +71,42 @@ class JdCategorySpider(scrapy.Spider):
     def parse(self, response):
         data_list = response.xpath('//div[@class="col"]/div[@class="category-item m"]')
         for data in data_list:
-            item = Category()
+            item = JdCategory()
             b_category_name = data.xpath('./div[@class="mt"]/h2/span/text()').get()
             # print(b_category_name)
             item['b_category_name'] = b_category_name
+            m_category_arr = []
             # 二级和三级分类的list
             m_category_list = data.xpath('./div[@class="mc"]/div[@class="items"]/dl')
             for m_category in m_category_list:
                 m_category_name = m_category.xpath('./dt/a/text()').get()
                 m_category_url = m_category.xpath('./dt/a/@href').get()
-                item['m_category_name'] = m_category_name
-                item['m_category_url'] = self.parse_category_url(m_category_url)
+                m_item = MediumJdCategory()
+                m_item['m_category_name'] = m_category_name
+                m_item['m_category_url'] = self.parse_category_url(m_category_url)
+
+                s_category_arr = []
                 # 三级分类的list
                 s_category_list = m_category.xpath('./dd/a')
+                # 循环取出三级分类信息
                 for s_category in s_category_list:
                     s_category_name = s_category.xpath('./text()').get()
                     s_category_url = s_category.xpath('./@href').get()
-                    if self.parse_category_url(s_category_url):
-                        item['s_category_name'] = s_category_name
-                        item['s_category_url'] = self.parse_category_url(s_category_url)
-                        yield item
+                    if self.judge_url(s_category_url):
+                        s_item = SmallJdCategory()
+                        s_item['s_category_name'] = s_category_name
+                        s_item['s_category_url'] = self.parse_category_url(s_category_url)
+                        s_category_arr.append(dict(s_item))
+                        # yield item
                     else:
                         continue
+                # 嵌套到二级分类item中
+                if len(s_category_arr):
+                    m_item['s_category'] = s_category_arr
+                    m_category_arr.append(dict(m_item))
+            # 嵌套到一级分类数组中
+            item['m_category'] = m_category_arr
+            yield item
 
     def parse_category_url(self, category_url):
         return 'https:' + category_url

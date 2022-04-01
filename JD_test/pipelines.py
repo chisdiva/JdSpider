@@ -10,8 +10,9 @@ from itemadapter import ItemAdapter
 import pymongo
 from itemadapter import ItemAdapter
 from JD_test.spiders.JD_category import JdCategorySpider
-from JD_test.spiders.JD_book import JdBookSpider
+from JD_test.spiders.JD_product import JdBookSpider
 
+from JD_test.items import JdGoodsItem, GoodsCommentContent
 
 class CategoryPipeline:
     def __init__(self, mongo_host, mongo_port, mongo_db):
@@ -37,7 +38,6 @@ class CategoryPipeline:
 
     def process_item(self, item, spider):
         if isinstance(spider, JdCategorySpider):
-            s_url = item['s_category_url']
             # if s_url.startswith('https://list.jd.com')
             data = dict(item)
             # self.collection.update_one({'id': data['id']}, {'$set': data}, True)
@@ -70,13 +70,21 @@ class JdTestPipeline:
         if isinstance(spider, JdBookSpider):
             self.client = pymongo.MongoClient(host=self.mongo_host, port=self.mongo_port)
             self.db = self.client[self.mongo_db]
-            self.collection = self.db['Goods']
+            self.goodsCollection = self.db['Goods']
+            self.commentCollection = self.db['Comments']
+
 
     def process_item(self, item, spider):
         if isinstance(spider, JdBookSpider):
-
-            data = ItemAdapter(item).asdict()
-            self.collection.update_one({'id': data['id']}, {'$set': data}, True)
+            # 商品表和评论表分别存储
+            if isinstance(item, JdGoodsItem):
+                data = ItemAdapter(item).asdict()
+                print('存储商品')
+                self.goodsCollection.update_one({'id': data['id']}, {'$set': data}, True)
+            elif isinstance(item, GoodsCommentContent):
+                data = ItemAdapter(item).asdict()
+                print('存储评论')
+                self.commentCollection.update_one({'id': data['id']}, {'$set': data}, True)
             # self.collection.insert_one(data)
         return item
 
