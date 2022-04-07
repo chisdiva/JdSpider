@@ -2,9 +2,10 @@
 #
 # See documentation in:
 # https://docs.scrapy.org/en/latest/topics/spider-middleware.html
-
+import requests
 from scrapy import signals
 from scrapy.http import HtmlResponse
+from scrapy.downloadermiddlewares.retry import RetryMiddleware
 import re
 
 from fake_useragent import UserAgent
@@ -12,8 +13,6 @@ from fake_useragent import UserAgent
 from selenium.webdriver.support.ui import WebDriverWait as wait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
-
-
 
 # useful for handling different item types with a single interface
 from itemadapter import is_item, ItemAdapter
@@ -149,3 +148,25 @@ class JSPageMiddleware(object):
             return HtmlResponse(url=spider.browser.current_url, body=spider.browser.page_source, encoding="utf-8",
                                 request=request)
 
+
+class RandomProxyMiddleware(object):
+    # 动态设置ip代理
+    def process_request(self, request, spider):
+        try:
+            ip = requests.get("http://127.0.0.1:5010/get/?type=https").json().get("proxy")
+            request.meta["proxy"] = ip
+        except Exception as e:
+            pass
+
+
+class RetryAndSetProxyMiddleware(RetryMiddleware):
+    def process_exception(self, request, exception, spider):
+        if (
+                isinstance(exception, self.EXCEPTIONS_TO_RETRY)
+                and not request.meta.get('dont_retry', False)
+        ):
+            try:
+                del request.meta["proxy"]
+            except Exception as e:
+                pass
+            return self._retry(request, exception, spider)

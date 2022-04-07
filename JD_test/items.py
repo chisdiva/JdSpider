@@ -5,7 +5,7 @@
 
 import scrapy
 
-
+'''
 class JdCategory(scrapy.Item):
     b_category_name = scrapy.Field()
     m_category = scrapy.Field()
@@ -21,10 +21,9 @@ class MediumJdCategory(scrapy.Item):
 class SmallJdCategory(scrapy.Item):
     s_category_name = scrapy.Field()
     s_category_url = scrapy.Field()
-    
-
-
 '''
+
+
 class Category(scrapy.Item):
     """
     b_category_name : 一级分类名称
@@ -38,7 +37,6 @@ class Category(scrapy.Item):
     m_category_url = scrapy.Field()
     s_category_name = scrapy.Field()
     s_category_url = scrapy.Field()
-'''
 
 
 class JdGoodsItem(scrapy.Item):
@@ -47,7 +45,12 @@ class JdGoodsItem(scrapy.Item):
     id = scrapy.Field()
     name = scrapy.Field()
     price = scrapy.Field()
+    shop = scrapy.Field()
     comment_info = scrapy.Field()
+    brand = scrapy.Field()
+    prod_class = scrapy.Field()
+    task_id = scrapy.Field()
+    crawl_time = scrapy.Field()
 
 
 class GoodsComment(scrapy.Item):
@@ -57,5 +60,7 @@ class GoodsComment(scrapy.Item):
 
 
 class GoodsCommentContent(scrapy.Item):
-    goods_id = scrapy.Field()
+    id = scrapy.Field()
+    task_id = scrapy.Field()
     comments_content = scrapy.Field()
+    crawl_time = scrapy.Field()

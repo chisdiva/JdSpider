@@ -5,6 +5,9 @@
 
 
 # useful for handling different item types with a single interface
+import datetime
+import time
+
 from itemadapter import ItemAdapter
 
 import pymongo
@@ -13,6 +16,7 @@ from JD_test.spiders.JD_category import JdCategorySpider
 from JD_test.spiders.JD_product import JdBookSpider
 
 from JD_test.items import JdGoodsItem, GoodsCommentContent
+from subprocess import CREATE_NO_WINDOW
 
 class CategoryPipeline:
     def __init__(self, mongo_host, mongo_port, mongo_db):
@@ -70,9 +74,18 @@ class JdTestPipeline:
         if isinstance(spider, JdBookSpider):
             self.client = pymongo.MongoClient(host=self.mongo_host, port=self.mongo_port)
             self.db = self.client[self.mongo_db]
+            collist = self.db.list_collection_names()
+            '''
+            self.goodsCollectionName = spider.col_name + '_商品'
+            self.commentCollectionName = spider.col_name + '_评论'
+            if spider.sp_id is not None:
+                self.goodsCollectionName = spider.sp_id + '_' + self.goodsCollectionName
+                self.commentCollectionName = spider.sp_id + '_' + self.commentCollectionName
+            self.goodsCollection = self.db[self.goodsCollectionName]
+            self.commentCollection = self.db[self.commentCollectionName]
+            '''
             self.goodsCollection = self.db['Goods']
             self.commentCollection = self.db['Comments']
-
 
     def process_item(self, item, spider):
         if isinstance(spider, JdBookSpider):
@@ -80,11 +93,17 @@ class JdTestPipeline:
             if isinstance(item, JdGoodsItem):
                 data = ItemAdapter(item).asdict()
                 print('存储商品')
-                self.goodsCollection.update_one({'id': data['id']}, {'$set': data}, True)
+                self.goodsCollection.update_one({'id': data['id'], 'task_id': data['task_id']},
+                                                {'$set': data},
+                                                True)
             elif isinstance(item, GoodsCommentContent):
                 data = ItemAdapter(item).asdict()
+                if 'crawl_time' not in data:
+                    data['crawl_time'] = time.time()
                 print('存储评论')
-                self.commentCollection.update_one({'id': data['id']}, {'$set': data}, True)
+                self.commentCollection.update_one({'id': data['id'], 'task_id': data['task_id']},
+                                                  {'$set': data},
+                                                  True)
             # self.collection.insert_one(data)
         return item
 

@@ -19,19 +19,24 @@ NEWSPIDER_MODULE = 'JD_test.spiders'
 # Obey robots.txt rules
 ROBOTSTXT_OBEY = False
 
+custom_settings = {
+        "COOKIES_ENABLED": False,
+}
 # Configure maximum concurrent requests performed by Scrapy (default: 16)
 #CONCURRENT_REQUESTS = 32
 
 # Configure a delay for requests for the same website (default: 0)
 # See https://docs.scrapy.org/en/latest/topics/settings.html#download-delay
 # See also autothrottle settings and docs
-DOWNLOAD_DELAY = 2
+# DOWNLOAD_DELAY = 2
+AUTOTHROTTLE_ENABLED = True
+AUTOTHROTTLE_START_DELAY = 4
 # The download delay setting will honor only one of:
 #CONCURRENT_REQUESTS_PER_DOMAIN = 16
 #CONCURRENT_REQUESTS_PER_IP = 16
 
 # Disable cookies (enabled by default)
-#COOKIES_ENABLED = False
+COOKIES_ENABLED = False
 
 # Disable Telnet Console (enabled by default)
 #TELNETCONSOLE_ENABLED = False
@@ -53,7 +58,8 @@ DOWNLOAD_DELAY = 2
 DOWNLOADER_MIDDLEWARES = {
     'JD_test.middlewares.JSPageMiddleware': 543,
     'scrapy.downloadermiddlewares.useragent.UserAgentMiddleware': None,
-    'JD_test.middlewares.RandomUserAgentMiddleware': 543
+    'JD_test.middlewares.RandomUserAgentMiddleware': 543,
+    # 'JD_test.middlewares.RandomProxyMiddleware': 580
 }
 
 # Enable or disable extensions
@@ -96,3 +102,4 @@ MONGO_HOST = '127.0.0.1'
 MONGO_PORT = 27017
 MONGO_DBNAME = 'JD_test'
 #MONGO_DOCNAME = 'Goods'
+query_sentence = '[{"$match": {"m_category.s_category.s_category_name":"女靴"}},{"$unwind": "$m_category"},{"$unwind": "$m_category.s_category"},{"$match": {"m_category.s_category.s_category_name":{category_name}}}]'
