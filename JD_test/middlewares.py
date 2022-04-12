@@ -134,7 +134,7 @@ class JSPageMiddleware(object):
     # 通过chrome请求动态网页
     def process_request(self, request, spider):
         # print(request.url.find('list.jd.com'))
-        if request.url.find('list.jd.com') != -1:
+        if request.url.find('list.jd.com') != -1 or request.url.find('search.jd.com') != -1:
             print('start++++++++++++++++++')
             # browser = webdriver.Chrome(executable_path="D:\scrpay_test\chromedriver.exe")
             spider.browser.get(request.url)
@@ -152,11 +152,13 @@ class JSPageMiddleware(object):
 class RandomProxyMiddleware(object):
     # 动态设置ip代理
     def process_request(self, request, spider):
-        try:
-            ip = requests.get("http://127.0.0.1:5010/get/?type=https").json().get("proxy")
-            request.meta["proxy"] = ip
-        except Exception as e:
-            pass
+        # 仅当连接失败时使用代理
+        if request.meta.get('retry_times', 0) > 0:
+            try:
+                ip = requests.get("http://127.0.0.1:5010/get/?type=https").json().get("proxy")
+                request.meta["proxy"] = ip
+            except Exception as e:
+                pass
 
 
 class RetryAndSetProxyMiddleware(RetryMiddleware):

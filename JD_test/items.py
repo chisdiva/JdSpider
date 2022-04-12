@@ -64,3 +64,4 @@ class GoodsCommentContent(scrapy.Item):
     task_id = scrapy.Field()
     comments_content = scrapy.Field()
     crawl_time = scrapy.Field()
+    prod_class = scrapy.Field()

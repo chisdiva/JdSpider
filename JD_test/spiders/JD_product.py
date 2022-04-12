@@ -1,3 +1,6 @@
+import logging
+import math
+import pickle
 import time
 
 import pymongo
@@ -11,6 +14,8 @@ import requests
 
 from JD_test.items import JdGoodsItem, GoodsComment, GoodsCommentContent
 
+from scrapy_redis.spiders import RedisSpider
+
 
 def str2num(num_str):
     if num_str.endswith('+'):
@@ -20,34 +25,39 @@ def str2num(num_str):
     return int(num_str)
 
 
-class JdBookSpider(scrapy.Spider):
+class JdBookSpider(RedisSpider):
+    # 集成RedisSpider
     name = 'JD_product'
     allowed_domains = ['jd.com']
+    # 指定起始url在Redis中的Key
+    redis_key = 'jd_product:start_urls'
 
     # start_urls = ['https://list.jd.com/list.html?cat=1713%2C3258%2C3297&page={}&s=1&click=0']
 
     def __init__(self, set_page=2, set_comment_page=1, crawl_all_flag=False, key_word=None, category_name=None,
-                 spider_id=None, *args,
+                 spider_id=0, *args,
                  **kwargs):
-        if key_word is None and category_name is None and crawl_all_flag is False:
-            raise Exception('参数错误！')
-        if key_word is None:
-            # 分类爬取
-            self.col_name = category_name
-            self.category_db = pymongo.MongoClient('127.0.0.1', 27017)['JD_test']
-            self.url_doc = self.category_db['Category'].find({"s_category_name": category_name})
-
-            self.base_url = list(self.url_doc)[0]['s_category_url']
-        else:
-            # 关键词爬取
-            self.col_name = key_word
-            self.base_url = "https://search.jd.com/Search?keyword={key_word}&enc=utf-8".format(key_word=key_word)
+        # if key_word is None and category_name is None and crawl_all_flag is False:
+        #     raise Exception('参数错误！')
+        # if key_word is None:
+        #     # 分类爬取
+        #     self.col_name = category_name
+        #     self.category_db = pymongo.MongoClient('127.0.0.1', 27017)['JD_test']
+        #     self.url_doc = self.category_db['Category'].find({"s_category_name": category_name})
+        #
+        #     self.base_url = list(self.url_doc)[0]['s_category_url']
+        # else:
+        #     # 关键词爬取
+        #     self.col_name = key_word
+        #     self.base_url = "https://search.jd.com/Search?keyword={key_word}&enc=utf-8".format(key_word=key_word)
         # 获取参数
+        self.base_url = ''
+        self.col_name = ''
         self.set_page = int(set_page)
         self.set_comment_page = int(set_comment_page)
         self.sp_id = 0
-        if spider_id is not None:
-            self.sp_id = spider_id
+        # if spider_id is not None:
+        #    self.sp_id = int(spider_id)
 
         # selenium配置
         self.options = webdriver.ChromeOptions()
@@ -64,13 +74,31 @@ class JdBookSpider(scrapy.Spider):
         # 关闭spider时退出浏览器
         self.browser.quit()
         # 关闭spider时发送请求表明爬虫完成
-        #r = requests.get("http://127.0.0.1:7866/spider/finished")
+        # r = requests.get("http://127.0.0.1:7866/spider/finished")
 
-    def start_requests(self):
-        for page in range(1, int(self.set_page), 2):
-            url = self.base_url + '&page=' + str(page)
-            print('访问第{}页'.format(page))
-            yield scrapy.Request(url)
+    # def start_requests(self):
+    #     for page in range(1, int(self.set_page), 2):
+    #         url = self.base_url + '&page=' + str(page)
+    #         print('访问第{}页'.format(page))
+    #         yield scrapy.Request(url)
+
+    def make_request_from_data(self, data):
+        """
+        从Redis数据库中读取分类信息构建请求，或根据
+        :param data:
+        :return:
+        """
+        url_data = json.loads(data)
+        logging.info(url_data)
+        base_search_url = "https://search.jd.com/Search?keyword={key_word}&enc=utf-8"
+        self.set_page = url_data['set_page']
+        self.set_comment_page = url_data['set_comment_page']
+        self.base_url = url_data['s_category_url'] if 's_category_url' in url_data else base_search_url.format(
+            key_word=url_data['key_word'])
+        self.col_name = url_data['s_category_name'] if 's_category_name' in url_data else url_data['key_word']
+        if 'task_id' in url_data:
+            self.sp_id = url_data['task_id']
+        return scrapy.Request(self.base_url, callback=self.parse, meta={'list_page': 1})
 
     def parse(self, response):
         li_list = response.xpath('//*[@id="J_goodsList"]/ul/li')
@@ -81,18 +109,25 @@ class JdBookSpider(scrapy.Spider):
             price = li.xpath('.//div[contains(@class,"p-price")]/strong/i/text()').get()
             # comment_num = li.xpath('.//div[@class="p-commit"]/strong/a/text()').extract()
             shop = li.xpath('.//div[contains(@class,"p-shop")]/span/a/text()').get()
+            if shop is None:
+                shop = li.xpath('.//div[contains(@class,"p-shopnum")]//a/text()').get()
             item = JdGoodsItem(id=goods_id, name=name, price=price, shop=shop, prod_class=self.col_name,
                                task_id=self.sp_id)
             # 构造详情页接口
             # detail_interface = f"https://item.jd.com/{goods_id}.html"
             # yield scrapy.Request(detail_interface, callback=self.parse_detail,
-                                 # meta={'item': item, 'goods_id': goods_id})
+            # meta={'item': item, 'goods_id': goods_id})
             # 构造评论信息接口
             # score:0为全部评论 3为好评 2为中评 1为差评
             comment_summary_interface = "https://club.jd.com/comment/productCommentSummaries.action?referenceIds={goods_id}".format(
                 goods_id=goods_id
             )
             yield scrapy.Request(comment_summary_interface, callback=self.parse_comments, meta={'item': item})
+        list_page = response.meta['list_page']
+        list_page = list_page + 2
+        if list_page < self.set_page - 1:
+            next_url = self.base_url + '&page=' + str(list_page)
+            yield scrapy.Request(next_url, callback=self.parse, meta={'list_page': list_page})
 
     def parse_comments(self, response):
         item = response.meta['item']
@@ -103,45 +138,43 @@ class JdBookSpider(scrapy.Spider):
         comment_item['good_comment_rate'] = jsonpath(result, '$..GoodRate')[0]
         comment_item['negative_comment_rate'] = jsonpath(result, '$..PoorRate')[0]
         item['comment_info'] = dict(comment_item)
-        item['crawl_time'] = time.time()
+        item['crawl_time'] = math.floor(time.time())
 
         # 在这里进行评论内容抓取，把结果返回
-        yield scrapy.Request(url=self.create_comment_interface(item['id'], 0),
-                             callback=self.parse_comments_content,
-                             meta={'current_page': 0,
-                                   'goods_id': item['id'],
-                                   'comment_array': None})
+        if self.set_comment_page > 0:
+            yield scrapy.Request(url=self.create_comment_interface(item['id'], 0),
+                                 callback=self.parse_comments_content,
+                                 meta={'current_page': 0,
+                                       'goods_id': item['id'],
+                                       'comment_array': None,
+                                       })
         yield item
 
-    def parse_comments_content(self, response, goods_id=None, current_comment_page=None):
+    def parse_comments_content(self, response, goods_id=None):
         if goods_id is None:
             goods_id = response.meta['goods_id']
-        if current_comment_page is None:
-            current_comment_page = response.meta['current_page']
-        result = json.loads(response.text)
+        current_comment_page = response.meta['current_page']
+        try:
+            result = json.loads(response.text)
+        except Exception as e:
+            comments_content_item = GoodsCommentContent()
+            return comments_content_item
         # 取出评论内容数组
         comments = result['comments']
         # 最大页数
         max_page = int(result['maxPage'])
-        if current_comment_page + 1 < self.set_comment_page and current_comment_page + 1 < max_page:
-            if current_comment_page == 0:
-                print('第{}页评论++++++++++++'.format(current_comment_page))
-                comment_array = self.comments_content_extract(comments)
-            else:
-                comment_array = self.comments_content_extract(comments, response.meta['comment_array'])
 
+        if current_comment_page + 1 < self.set_comment_page and current_comment_page + 1 < max_page:
+            # 小于最大页数，则交给提取函数提取内容，然后继续请求
+            comment_array = self.comments_content_extract(comments, response.meta['comment_array'])
             yield scrapy.Request(url=self.create_comment_interface(goods_id, current_comment_page + 1),
                                  callback=self.parse_comments_content,
                                  meta={'comment_array': comment_array, 'current_page': current_comment_page + 1,
                                        'goods_id': goods_id})
         else:
-            # 只有一页的情况
-            if max_page == 1:
-                comment_array = self.comments_content_extract(comments)
-            else:
-                comment_array = self.comments_content_extract(comments, response.meta['comment_array'])
+            comment_array = self.comments_content_extract(comments, response.meta['comment_array'])
             comments_content_item = GoodsCommentContent(id=goods_id, comments_content=comment_array, task_id=self.sp_id,
-                                                        crawl_time=time.time())
+                                                        crawl_time=time.time(), prod_class=self.col_name)
             yield comments_content_item
 
     def create_comment_interface(self, goods_id, comment_page):
@@ -154,7 +187,6 @@ class JdBookSpider(scrapy.Spider):
         if comment_array is None:
             comment_array = []
         for i in range(0, len(comments)):
-
             comment_array.append({
                 'create_time': comments[i]['creationTime'],
                 'content': comments[i]['content'],

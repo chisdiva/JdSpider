@@ -12,6 +12,20 @@ BOT_NAME = 'JD_test'
 SPIDER_MODULES = ['JD_test.spiders']
 NEWSPIDER_MODULE = 'JD_test.spiders'
 
+# Enables scheduling storing requests queue in redis.
+SCHEDULER = "scrapy_redis.scheduler.Scheduler"
+
+# Ensure all spiders share same duplicates filter through redis.
+DUPEFILTER_CLASS = "scrapy_redis.dupefilter.RFPDupeFilter"
+
+# Specify the host and port to use when connecting to Redis (optional).
+REDIS_HOST = 'localhost'
+REDIS_PORT = 6379
+
+# Custom redis client parameters (i.e.: socket timeout, etc.)
+REDIS_PARAMS = {
+    'password': 'rds188525'
+}
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
 #USER_AGENT = 'JD_test (+http://www.yourdomain.com)'
@@ -59,7 +73,8 @@ DOWNLOADER_MIDDLEWARES = {
     'JD_test.middlewares.JSPageMiddleware': 543,
     'scrapy.downloadermiddlewares.useragent.UserAgentMiddleware': None,
     'JD_test.middlewares.RandomUserAgentMiddleware': 543,
-    # 'JD_test.middlewares.RandomProxyMiddleware': 580
+    'JD_test.middlewares.RandomProxyMiddleware': 580,
+    'JD_test.middlewares.RetryAndSetProxyMiddleware': 550
 }
 
 # Enable or disable extensions
