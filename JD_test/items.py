@@ -39,29 +39,32 @@ class Category(scrapy.Item):
     s_category_url = scrapy.Field()
 
 
-class JdGoodsItem(scrapy.Item):
+class GoodsItem(scrapy.Item):
     # define the fields for your item here like:
-    # name = scrapy.Field()
-    id = scrapy.Field()
-    name = scrapy.Field()
-    price = scrapy.Field()
-    shop = scrapy.Field()
-    comment_info = scrapy.Field()
-    brand = scrapy.Field()
-    prod_class = scrapy.Field()
-    task_id = scrapy.Field()
-    crawl_time = scrapy.Field()
+
+    id = scrapy.Field()  # 商品id
+    name = scrapy.Field()  # 商品名称
+    price = scrapy.Field()  # 商品价格
+    shop = scrapy.Field()  # 商品店铺
+    comment_info = scrapy.Field()  # 商品的评论情况
+    prod_class = scrapy.Field()  # 商品所属的集合
+    task_id = scrapy.Field()  # 爬取任务的id
+    image_urls = scrapy.Field()  # 图片链接
+    images = scrapy.Field()  # 图片存储后信息
+    source = scrapy.Field()  # 商品来源
+    crawl_time = scrapy.Field() # 抓取时间
 
 
 class GoodsComment(scrapy.Item):
-    comment_num = scrapy.Field()
-    good_comment_rate = scrapy.Field()
-    negative_comment_rate = scrapy.Field()
+    comment_num = scrapy.Field()  # 评论数量
+    good_comment_rate = scrapy.Field()  # 好评率
+    negative_comment_rate = scrapy.Field()  # 差评率
 
 
 class GoodsCommentContent(scrapy.Item):
-    id = scrapy.Field()
-    task_id = scrapy.Field()
-    comments_content = scrapy.Field()
-    crawl_time = scrapy.Field()
-    prod_class = scrapy.Field()
+    id = scrapy.Field() # 商品id
+    task_id = scrapy.Field() # 任务id
+    prod_class = scrapy.Field()  # 任务名称
+    comments_content = scrapy.Field() # 评论内容
+    crawl_time = scrapy.Field() # 抓取时间
+

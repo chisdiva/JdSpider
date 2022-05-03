@@ -12,9 +12,12 @@ from jsonpath import jsonpath
 from selenium import webdriver
 import requests
 
-from JD_test.items import JdGoodsItem, GoodsComment, GoodsCommentContent
+from JD_test.items import GoodsItem, GoodsComment, GoodsCommentContent
 
 from scrapy_redis.spiders import RedisSpider
+from scrapy.exceptions import DontCloseSpider
+
+from twisted.web.client import ResponseFailed
 
 
 def str2num(num_str):
@@ -25,7 +28,7 @@ def str2num(num_str):
     return int(num_str)
 
 
-class JdBookSpider(RedisSpider):
+class JdProductSpider(RedisSpider):
     # 集成RedisSpider
     name = 'JD_product'
     allowed_domains = ['jd.com']
@@ -34,30 +37,13 @@ class JdBookSpider(RedisSpider):
 
     # start_urls = ['https://list.jd.com/list.html?cat=1713%2C3258%2C3297&page={}&s=1&click=0']
 
-    def __init__(self, set_page=2, set_comment_page=1, crawl_all_flag=False, key_word=None, category_name=None,
-                 spider_id=0, *args,
-                 **kwargs):
-        # if key_word is None and category_name is None and crawl_all_flag is False:
-        #     raise Exception('参数错误！')
-        # if key_word is None:
-        #     # 分类爬取
-        #     self.col_name = category_name
-        #     self.category_db = pymongo.MongoClient('127.0.0.1', 27017)['JD_test']
-        #     self.url_doc = self.category_db['Category'].find({"s_category_name": category_name})
-        #
-        #     self.base_url = list(self.url_doc)[0]['s_category_url']
-        # else:
-        #     # 关键词爬取
-        #     self.col_name = key_word
-        #     self.base_url = "https://search.jd.com/Search?keyword={key_word}&enc=utf-8".format(key_word=key_word)
-        # 获取参数
+    def __init__(self, set_page=1, set_comment_page=1, *args, **kwargs):
+        # 参数初始化
         self.base_url = ''
         self.col_name = ''
         self.set_page = int(set_page)
         self.set_comment_page = int(set_comment_page)
         self.sp_id = 0
-        # if spider_id is not None:
-        #    self.sp_id = int(spider_id)
 
         # selenium配置
         self.options = webdriver.ChromeOptions()
@@ -66,7 +52,7 @@ class JdBookSpider(RedisSpider):
         self.options.add_argument('--headless')
         self.browser = webdriver.Chrome(executable_path="D:\scrpay_test\chromedriver.exe",
                                         chrome_options=self.options)
-        super(JdBookSpider, self).__init__(*args, **kwargs)
+        super(JdProductSpider, self).__init__(*args, **kwargs)
         dispatcher.connect(self.spider_closed, signals.spider_closed)
 
     def spider_closed(self, spider):
@@ -76,17 +62,30 @@ class JdBookSpider(RedisSpider):
         # 关闭spider时发送请求表明爬虫完成
         # r = requests.get("http://127.0.0.1:7866/spider/finished")
 
-    # def start_requests(self):
-    #     for page in range(1, int(self.set_page), 2):
-    #         url = self.base_url + '&page=' + str(page)
-    #         print('访问第{}页'.format(page))
-    #         yield scrapy.Request(url)
+    # def spider_idle(self):
+    #     """
+    #     Schedules a request if available, otherwise waits.
+    #     or close spider when waiting seconds > MAX_IDLE_TIME_BEFORE_CLOSE.
+    #     MAX_IDLE_TIME_BEFORE_CLOSE will not affect SCHEDULER_IDLE_BEFORE_CLOSE.
+    #     """
+    #     if self.server is not None and self.count_size(self.redis_key) > 0:
+    #         self.spider_idle_start_time = int(time.time())
+    #
+    #     self.schedule_next_requests()
+    #
+    #     max_idle_time = self.settings.getint("MAX_IDLE_TIME_BEFORE_CLOSE")
+    #     idle_time = int(time.time()) - self.spider_idle_start_time
+    #     if max_idle_time != 0 and idle_time >= max_idle_time:
+    #         return
+    #     if idle_time >= 90 and self.crawler.stats.get_value('crawled_product_number') > 0:
+    #         # requests.get('http://1.14.150.188:7866/spider/JDClosed', params={'productNum': crawled_product_num,
+    #         #                                                                  'commentsNum': crawled_comments_num})
+    #         return
+    #     raise DontCloseSpider
 
     def make_request_from_data(self, data):
         """
-        从Redis数据库中读取分类信息构建请求，或根据
-        :param data:
-        :return:
+        从Redis数据库中读取信息构建请求
         """
         url_data = json.loads(data)
         logging.info(url_data)
@@ -101,44 +100,53 @@ class JdBookSpider(RedisSpider):
         return scrapy.Request(self.base_url, callback=self.parse, meta={'list_page': 1})
 
     def parse(self, response):
+        # 从结果列表页解析商品数据
         li_list = response.xpath('//*[@id="J_goodsList"]/ul/li')
         for li in li_list:
             goods_id = li.xpath('./@data-sku').get()
             names = li.xpath('.//div[contains(@class,"p-name")]/a/em')
             name = names.xpath('string(.)').get()
-            price = li.xpath('.//div[contains(@class,"p-price")]/strong/i/text()').get()
-            # comment_num = li.xpath('.//div[@class="p-commit"]/strong/a/text()').extract()
+            price = round(float(li.xpath('.//div[contains(@class,"p-price")]/strong/i/text()').get()), 2)
             shop = li.xpath('.//div[contains(@class,"p-shop")]/span/a/text()').get()
+            # 京东的商品和图片链接可能有不同的形式，因此如果未获取到结果要尝试另一解析规则
             if shop is None:
                 shop = li.xpath('.//div[contains(@class,"p-shopnum")]//a/text()').get()
-            item = JdGoodsItem(id=goods_id, name=name, price=price, shop=shop, prod_class=self.col_name,
-                               task_id=self.sp_id)
-            # 构造详情页接口
-            # detail_interface = f"https://item.jd.com/{goods_id}.html"
-            # yield scrapy.Request(detail_interface, callback=self.parse_detail,
-            # meta={'item': item, 'goods_id': goods_id})
+            image_url = li.xpath('.//div[contains(@class,"p-img")]/a/img/@src').get()
+            if image_url is None:
+                image_url = li.xpath('.//div[contains(@class,"p-img")]/a/img/@data-lazy-img').get()
+            image_url = 'https:' + image_url
+            # 图片管道的image_urls应为数组
+            image_urls = [image_url]
+            # 构造商品Item实体
+            item = GoodsItem(id=goods_id, name=name, price=price, shop=shop, prod_class=self.col_name,
+                             task_id=self.sp_id, image_urls=image_urls, source='京东')
             # 构造评论信息接口
             # score:0为全部评论 3为好评 2为中评 1为差评
             comment_summary_interface = "https://club.jd.com/comment/productCommentSummaries.action?referenceIds={goods_id}".format(
                 goods_id=goods_id
             )
+            #生成评论信息接口，放入爬取队列
             yield scrapy.Request(comment_summary_interface, callback=self.parse_comments, meta={'item': item})
+
+        # 构造下一页的链接并生成请求
         list_page = response.meta['list_page']
         list_page = list_page + 2
-        if list_page < self.set_page - 1:
+        if list_page < self.set_page * 2:
             next_url = self.base_url + '&page=' + str(list_page)
             yield scrapy.Request(next_url, callback=self.parse, meta={'list_page': list_page})
 
     def parse_comments(self, response):
         item = response.meta['item']
         comment_item = GoodsComment()
-        result = json.loads(response.text)
+        try:
+            result = json.loads(response.text)
+        except Exception as e:
+            raise ResponseFailed
         # 提取评论相关数据
         comment_item['comment_num'] = jsonpath(result, '$..CommentCountStr')[0]
         comment_item['good_comment_rate'] = jsonpath(result, '$..GoodRate')[0]
         comment_item['negative_comment_rate'] = jsonpath(result, '$..PoorRate')[0]
         item['comment_info'] = dict(comment_item)
-        item['crawl_time'] = math.floor(time.time())
 
         # 在这里进行评论内容抓取，把结果返回
         if self.set_comment_page > 0:
@@ -148,6 +156,7 @@ class JdBookSpider(RedisSpider):
                                        'goods_id': item['id'],
                                        'comment_array': None,
                                        })
+
         yield item
 
     def parse_comments_content(self, response, goods_id=None):
@@ -173,8 +182,9 @@ class JdBookSpider(RedisSpider):
                                        'goods_id': goods_id})
         else:
             comment_array = self.comments_content_extract(comments, response.meta['comment_array'])
-            comments_content_item = GoodsCommentContent(id=goods_id, comments_content=comment_array, task_id=self.sp_id,
-                                                        crawl_time=time.time(), prod_class=self.col_name)
+            comments_content_item = GoodsCommentContent(id=goods_id, comments_content=comment_array,
+                                                        task_id=self.sp_id, crawl_time=time.time(),
+                                                        prod_class=self.col_name)
             yield comments_content_item
 
     def create_comment_interface(self, goods_id, comment_page):
@@ -190,8 +200,11 @@ class JdBookSpider(RedisSpider):
             comment_array.append({
                 'create_time': comments[i]['creationTime'],
                 'content': comments[i]['content'],
-                'score': comments[i]['score']
+                'score': comments[i]['score'],
+                'isPlus': comments[i]['plusAvailable'] > 0,
+                'userClient': comments[i]['userClient']
             })
+
 
         return comment_array
 

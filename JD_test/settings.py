@@ -14,18 +14,37 @@ NEWSPIDER_MODULE = 'JD_test.spiders'
 
 # Enables scheduling storing requests queue in redis.
 SCHEDULER = "scrapy_redis.scheduler.Scheduler"
-
+SCHEDULER_PERSIST = True
 # Ensure all spiders share same duplicates filter through redis.
 DUPEFILTER_CLASS = "scrapy_redis.dupefilter.RFPDupeFilter"
 
 # Specify the host and port to use when connecting to Redis (optional).
-REDIS_HOST = 'localhost'
-REDIS_PORT = 6379
+REDIS_HOST = '1.14.150.188'
+REDIS_PORT = 5546
 
 # Custom redis client parameters (i.e.: socket timeout, etc.)
 REDIS_PARAMS = {
-    'password': 'rds188525'
+    'password': 'rds188525mkLisOQT81'
 }
+
+# QINIU_AK = 'LFtq5gXK_COwULxBqgvZehqWWNrsdTBZ1Dvier6C'
+# QINIU_SK = '76DbjvXSXw3pSdW7SBG4Hm09zhbQZc_Bv3g9hkdP'
+# QINIU_BUCKET = 'jdsp-image'
+# QINIU_DOMAIN = ''
+# QINIU_DEL_SRC = True
+# QINIU_FIELDS = [
+#     'image_url',
+# ]
+
+IMAGES_STORE = 's3://jdsp-image/productImage'
+IMAGES_STORE_S3_ACL = 'public-read'
+AWS_ENDPOINT_URL = 'http://s3-cn-south-1.qiniucs.com'
+IMAGES_EXPIRES = 10
+AWS_ACCESS_KEY_ID = 'LFtq5gXK_COwULxBqgvZehqWWNrsdTBZ1Dvier6C'
+AWS_SECRET_ACCESS_KEY = '76DbjvXSXw3pSdW7SBG4Hm09zhbQZc_Bv3g9hkdP'
+AWS_REGION_NAME = 'cn-south-1'
+AWS_USE_SSL = False  # or True (None by default)
+AWS_VERIFY = False  # or True (None by default)
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
 #USER_AGENT = 'JD_test (+http://www.yourdomain.com)'
@@ -42,9 +61,10 @@ custom_settings = {
 # Configure a delay for requests for the same website (default: 0)
 # See https://docs.scrapy.org/en/latest/topics/settings.html#download-delay
 # See also autothrottle settings and docs
-# DOWNLOAD_DELAY = 2
-AUTOTHROTTLE_ENABLED = True
-AUTOTHROTTLE_START_DELAY = 4
+DOWNLOAD_DELAY = 0.5
+DOWNLOAD_TIMEOUT = 10
+# AUTOTHROTTLE_ENABLED = True
+# AUTOTHROTTLE_START_DELAY = 4
 # The download delay setting will honor only one of:
 #CONCURRENT_REQUESTS_PER_DOMAIN = 16
 #CONCURRENT_REQUESTS_PER_IP = 16
@@ -70,12 +90,14 @@ COOKIES_ENABLED = False
 # Enable or disable downloader middlewares
 # See https://docs.scrapy.org/en/latest/topics/downloader-middleware.html
 DOWNLOADER_MIDDLEWARES = {
-    'JD_test.middlewares.JSPageMiddleware': 543,
+    'JD_test.middlewares.JSPageMiddleware': 1,
     'scrapy.downloadermiddlewares.useragent.UserAgentMiddleware': None,
     'JD_test.middlewares.RandomUserAgentMiddleware': 543,
     'JD_test.middlewares.RandomProxyMiddleware': 580,
-    'JD_test.middlewares.RetryAndSetProxyMiddleware': 550
+    'JD_test.middlewares.MyRetryMiddleware': 500
 }
+RETRY_ENABLED = True
+RETRY_HTTP_CODES = [302, 401, 403, 500, 502, 503, 504, 522, 524, 408, 429]
 
 # Enable or disable extensions
 # See https://docs.scrapy.org/en/latest/topics/extensions.html
@@ -86,8 +108,12 @@ DOWNLOADER_MIDDLEWARES = {
 # Configure item pipelines
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
 ITEM_PIPELINES = {
-    'JD_test.pipelines.JdTestPipeline': 300,
-    'JD_test.pipelines.CategoryPipeline': 300
+    'JD_test.pipelines.MongoPipeline': 300,
+    'JD_test.pipelines.CategoryPipeline': 305,
+    # 'scrapy_save_to_qiniu.pipelines.SaveToQiniuPipeline': 30,
+    'JD_test.pipelines.CommentContentPipeline': 100,
+    'scrapy.pipelines.images.ImagesPipeline': 1,
+    'JD_test.pipelines.TimePipeline': 20,
 }
 
 #user_agent_list = []
@@ -113,8 +139,10 @@ ITEM_PIPELINES = {
 #HTTPCACHE_STORAGE = 'scrapy.extensions.httpcache.FilesystemCacheStorage'
 
 
-MONGO_HOST = '127.0.0.1'
+MONGO_HOST = '1.14.150.188'
 MONGO_PORT = 27017
 MONGO_DBNAME = 'JD_test'
+MONGO_USERNAME = 'txy'
+MONGO_PASSWORD = 'txy188525'
+MONGO_AUTHSOURCE='admin'
 #MONGO_DOCNAME = 'Goods'
-query_sentence = '[{"$match": {"m_category.s_category.s_category_name":"女靴"}},{"$unwind": "$m_category"},{"$unwind": "$m_category.s_category"},{"$match": {"m_category.s_category.s_category_name":{category_name}}}]'

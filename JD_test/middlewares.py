@@ -2,11 +2,17 @@
 #
 # See documentation in:
 # https://docs.scrapy.org/en/latest/topics/spider-middleware.html
+import logging
+import random
 import requests
+import re
+from time import sleep
+
 from scrapy import signals
 from scrapy.http import HtmlResponse
+from scrapy.utils.response import response_status_message
 from scrapy.downloadermiddlewares.retry import RetryMiddleware
-import re
+from scrapy.pipelines.images import ImagesPipeline
 
 from fake_useragent import UserAgent
 
@@ -14,7 +20,6 @@ from selenium.webdriver.support.ui import WebDriverWait as wait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 
-# useful for handling different item types with a single interface
 from itemadapter import is_item, ItemAdapter
 
 
@@ -114,11 +119,9 @@ class JdTestDownloaderMiddleware:
 
 class RandomUserAgentMiddleware(object):
     # 随机更换user-agent
-
     # 用父类init方法初始化
     def __init__(self, crawler):
         super(RandomUserAgentMiddleware, self).__init__()
-        # self.user_agent_list = crawler.settings.get("user_agent_list", [])
         # 使用fake-useragent
         self.ua = UserAgent()
 
@@ -131,11 +134,10 @@ class RandomUserAgentMiddleware(object):
 
 
 class JSPageMiddleware(object):
-    # 通过chrome请求动态网页
+    # 通过selenium请求动态网页
     def process_request(self, request, spider):
         # print(request.url.find('list.jd.com'))
         if request.url.find('list.jd.com') != -1 or request.url.find('search.jd.com') != -1:
-            print('start++++++++++++++++++')
             # browser = webdriver.Chrome(executable_path="D:\scrpay_test\chromedriver.exe")
             spider.browser.get(request.url)
             js = "document.documentElement.scrollTop=10000"
@@ -147,26 +149,70 @@ class JSPageMiddleware(object):
             # 遇到htmlResponse,则不会再调用原生下载器
             return HtmlResponse(url=spider.browser.current_url, body=spider.browser.page_source, encoding="utf-8",
                                 request=request)
+        elif request.url.find('list.suning.com') != -1 or request.url.find('search.suning.com') != -1:
+            spider.browser.get(request.url)
+            js = "document.documentElement.scrollTop=10000"
+            spider.browser.execute_script(js)
+            try:
+                wait(spider.browser, 5).until(
+                    EC.presence_of_all_elements_located((By.CSS_SELECTOR, '#product-list > ul > li:nth-child(120)'))
+                )
+            finally:
+                print("访问:{0}".format(request.url))
+                # 遇到htmlResponse,则不会再调用原生下载器
+                return HtmlResponse(url=spider.browser.current_url, body=spider.browser.page_source, encoding="utf-8",
+                                    request=request)
 
 
 class RandomProxyMiddleware(object):
     # 动态设置ip代理
     def process_request(self, request, spider):
-        # 仅当连接失败时使用代理
+        # 当连接失败时使用代理
         if request.meta.get('retry_times', 0) > 0:
             try:
-                ip = requests.get("http://127.0.0.1:5010/get/?type=https").json().get("proxy")
-                request.meta["proxy"] = ip
+                # ip = requests.get("http://127.0.0.1:5010/get/?type=https").json().get("proxy")
+                # request.meta["proxy"] = ip
+                ip_port = 'ng001.weimiaocloud.com:9003'
+                proxy = "http://" + ip_port
+                request.meta['proxy'] = proxy
             except Exception as e:
                 pass
 
+        if request.url.find('club') != -1 or request.url.find('review') != -1:
+            ran = random.random()
+            if ran > 0.7:
+                try:
+                    # ip = requests.get("http://127.0.0.1:5010/get/?type=https").json().get("proxy")
+                    # request.meta["proxy"] = ip
+                    ip_port = 'ng001.weimiaocloud.com:9003'
+                    proxy = "http://" + ip_port
+                    request.meta['proxy'] = proxy
+                except Exception as e:
+                    pass
 
-class RetryAndSetProxyMiddleware(RetryMiddleware):
+
+class MyRetryMiddleware(RetryMiddleware):
+    def process_response(self, request, response, spider):
+        if request.meta.get('dont_retry', True):
+            return response
+        if response.status in self.retry_http_codes:
+            logging.info('响应异常，尝试删除代理延时10s重试')
+            sleep(10)
+            try:
+                del request.meta["proxy"]
+            except Exception as e:
+                pass
+            reason = response_status_message(response.status)
+            return self._retry(request, reason, spider) or response
+        return response
+
     def process_exception(self, request, exception, spider):
         if (
                 isinstance(exception, self.EXCEPTIONS_TO_RETRY)
                 and not request.meta.get('dont_retry', False)
         ):
+            logging.info('出现错误，尝试删除代理延时10s重试')
+            sleep(10)
             try:
                 del request.meta["proxy"]
             except Exception as e:
