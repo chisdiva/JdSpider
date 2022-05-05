@@ -71,14 +71,14 @@ class CommentContentPipeline:
     # 对评论内容数据进行一些单独处理
     def process_item(self, item, spider):
         if isinstance(item, GoodsCommentContent):
-            for content in item['comments_content']:
-                if content['userClient'] == 2 or content['userClient'] == 6:
-                    content['userClient'] = 'ios'
-                elif content['userClient'] == 4 or content['userClient'] == 5:
-                    content['userClient'] = 'android'
+                if item['userClient'] == 2 or item['userClient'] == 6:
+                    item['userClient'] = 'ios'
+                elif item['userClient'] == 4 or item['userClient'] == 5:
+                    item['userClient'] = 'android'
                 else:
-                    content['userClient'] = 'pc'
+                    item['userClient'] = 'pc'
         return item
+
 
 
 class MongoPipeline:
@@ -110,20 +110,22 @@ class MongoPipeline:
         self.db = self.client[self.mongo_db]
         # collist = self.db.list_collection_names()
         self.goodsCollection = self.db['Goods']
-        self.commentCollection = self.db['Comments']
+        self.commentCollection = self.db['Comments_Content']
 
     def process_item(self, item, spider):
         # 商品表和评论表分别存储
         if isinstance(item, GoodsItem):
             data = ItemAdapter(item).asdict()
-            self.goodsCollection.update_one({'id': data['id'], 'task_id': data['task_id']},
-                                            {'$set': data},
-                                            True)
+            # self.goodsCollection.update_one({'id': data['id'], 'task_id': data['task_id']},
+            #                                 {'$set': data},
+            #                                 True)
+            self.goodsCollection.insert_one(data)
         elif isinstance(item, GoodsCommentContent):
             data = ItemAdapter(item).asdict()
-            self.commentCollection.update_one({'id': data['id'], 'task_id': data['task_id']},
-                                              {'$set': data},
-                                              True)
+            # self.commentCollection.update_one({'comment_id': data['comment_id']},
+            #                                   {'$set': data},
+            #                                   True)
+            self.commentCollection.insert_one(data)
         # self.collection.insert_one(data)
         return item
 

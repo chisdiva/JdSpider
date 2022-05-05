@@ -1,3 +1,4 @@
+import logging
 import re
 
 import scrapy
@@ -11,6 +12,7 @@ from JD_test.items import GoodsItem, GoodsComment, GoodsCommentContent
 
 from scrapy_redis.spiders import RedisSpider
 from scrapy_redis.utils import bytes_to_str
+from scrapy.exceptions import DontCloseSpider
 
 
 class SnProductSpider(RedisSpider):
@@ -40,6 +42,27 @@ class SnProductSpider(RedisSpider):
         # 关闭spider时退出浏览器
         self.browser.quit()
 
+    def spider_idle(self, spider):
+        """
+        Schedules a request if available, otherwise waits.
+        or close spider when waiting seconds > MAX_IDLE_TIME_BEFORE_CLOSE.
+        MAX_IDLE_TIME_BEFORE_CLOSE will not affect SCHEDULER_IDLE_BEFORE_CLOSE.
+        """
+        # if self.server is not None and self.count_size(self.redis_key) > 0:
+        #     self.spider_idle_start_time = int(time.time())
+
+        self.schedule_next_requests()
+
+        # max_idle_time = self.settings.getint("MAX_IDLE_TIME_BEFORE_CLOSE")
+        # idle_time = int(time.time()) - self.spider_idle_start_time
+        # if max_idle_time != 0 and idle_time >= max_idle_time:
+        #     return
+        # if idle_time >= 90 and self.crawler.stats.get_value('crawled_product_number') > 0:
+        #     # requests.get('http://1.14.150.188:7866/spider/JDClosed', params={'productNum': crawled_product_num,
+        #     #                                                                  'commentsNum': crawled_comments_num})
+        #     return
+        raise DontCloseSpider
+
     def make_request_from_data(self, data):
         try:
             url_data = json.loads(data)
@@ -56,10 +79,11 @@ class SnProductSpider(RedisSpider):
         # 任务id
         if 'task_id' in url_data:
             self.sp_id = url_data['task_id']
-        return scrapy.Request(self.base_url, callback=self.parse, meta={'list_page': 1})
+        return self.make_requests_from_url(self.base_url)
 
     def parse(self, response):
         li_list = response.xpath('//div[contains(@class, "product-list")]/ul/li[contains(@class, "item-wrap")]')
+        logging.info(len(li_list))
         for li in li_list:
             # 商品id
             goods_id = li.xpath('./@id').get()
@@ -78,16 +102,27 @@ class SnProductSpider(RedisSpider):
             try:
                 price_int = int(price_wrap.xpath('./text()[2]').get().strip())
             except Exception as e:
-                price_int = int(price_wrap.xpath('./text()[1]').get().strip())
+                try:
+                    price_int = int(price_wrap.xpath('./text()[1]').get().strip())
+                except:
+                    try:
+                        price_int = int(''.join(price_wrap.xpath('./text()').getall()).strip())
+                    except:
+                        price_int = 0
             price_frac = price_wrap.xpath('./i[2]/text()').get()
-            price = price_int + (int(price_frac[1:]) / 100)
+            try:
+                price = price_int + (int(price_frac[1:]) / 100)
+            except Exception as e:
+                price = price_int
             # 店铺
             shop = li.xpath('.//div[contains(@class, "store-stock")]/a/text()').get()
             item = GoodsItem(id=goods_id, name=name, shop=shop, task_id=self.sp_id, price=price, source='苏宁',
                              prod_class=self.col_name, image_urls=image_urls)
             yield scrapy.Request(detail_url, callback=self.parse_detail, meta={'item': item, 'goods_id': goods_id})
-
-        list_page = response.meta['list_page']
+        try:
+            list_page = response.meta['list_page']
+        except Exception as e:
+            list_page = 1
         list_page = list_page + 1
         if list_page <= self.set_page:
             next_url = self.base_url + '&cp=' + str(list_page-1)
@@ -126,14 +161,19 @@ class SnProductSpider(RedisSpider):
         goods_id = response.meta['item']['id']
         # 去掉json数据外的包裹函数
         result = json.loads(response.text.lstrip("satisfy(").rstrip(")"))
-        comment_num = jsonpath(result, '$..totalCount')[0]
+        comment_num = int(jsonpath(result, '$..totalCount')[0])
         good_comment_num = int(jsonpath(result, '$..fiveStarCount')[0]) + int(jsonpath(result, '$..fourStarCount')[0])
         bad_comment_num = int(jsonpath(result, '$..twoStarCount')[0]) + int(jsonpath(result, '$..oneStarCount')[0])
-        good_comment_rate = round(good_comment_num / comment_num, 2)
-        negative_comment_rate = round(bad_comment_num / comment_num, 2)
+        if comment_num > 0:
+            good_comment_rate = round(good_comment_num / comment_num, 2)
+            negative_comment_rate = round(bad_comment_num / comment_num, 2)
+        else:
+            good_comment_rate = 0
+            negative_comment_rate = 0
         comment_item = GoodsComment(comment_num=comment_num, good_comment_rate=good_comment_rate,
                                     negative_comment_rate=negative_comment_rate)
         item = response.meta['item']
+        item['cluster'] = cluster_id
         item['comment_info'] = dict(comment_item)
         if self.set_comment_page > 0:
             yield scrapy.Request(url=self.suning_comment_interface(first_id=first_id,
@@ -141,7 +181,7 @@ class SnProductSpider(RedisSpider):
                                                                    cluster_id=cluster_id,
                                                                    comment_page=0),
                                  callback=self.parse_comments_content,
-                                 meta={'current_page': 0, 'comment_array': None, 'goods_id': goods_id,
+                                 meta={'current_page': 0, 'goods_id': goods_id,
                                        'first_id': first_id,'second_id': second_id, 'cluster_id': cluster_id})
         yield item
 
@@ -153,21 +193,34 @@ class SnProductSpider(RedisSpider):
         current_comment_page = response.meta['current_page']
         # 去掉json数据外的包裹函数
         result = json.loads(response.text.lstrip("reviewList(").rstrip(")"))
-        print(result['commodityReviews'][0]['commodityInfo']['charaterDesc1'])
+        # print(result['commodityReviews'][0]['commodityInfo']['charaterDesc1'])
         # 苏宁超出最大评论数时会返回无评论数据
-        if "无评价数据" in result['returnMsg'] or current_comment_page + 1 > self.set_comment_page:
-            comments_content_item = GoodsCommentContent(id=goods_id, comments_content=response.meta['comment_array'],
+        if "无评价数据" in result['returnMsg']:
+            return
+        # 取出评论内容数组
+        comments = result['commodityReviews']
+        for i in range(0, len(comments)):
+            user_client = ''
+            try:
+                user_client = comments[i]['deviceType']
+            except Exception as e:
+                try:
+                    user_client = comments[i]['sourceSystem']
+                except Exception as e:
+                    user_client = 'PC'
+            comments_content_item = GoodsCommentContent(goods_id=goods_id, comment_id=comments[i]['commodityReviewId'],
+                                                        comment_content=comments[i]['content'],
+                                                        score=comments[i]['qualityStar'],
+                                                        isPlus=comments[i]['userInfo']['isVip'],
+                                                        userClient=user_client,
+                                                        create_time=comments[i]['publishTime'],
                                                         task_id=self.sp_id,
                                                         prod_class=self.col_name)
             yield comments_content_item
-        else:
-            # 取出评论内容数组
-            comments = result['commodityReviews']
-            comment_array = self.comments_content_extract(comments, response.meta['comment_array'])
+        if current_comment_page + 1 < self.set_comment_page:
             yield scrapy.Request(url=self.suning_comment_interface(first_id, second_id, cluster_id, current_comment_page+1),
                                  callback=self.parse_comments_content,
-                                 meta={'comment_array': comment_array,
-                                       'current_page': current_comment_page + 1,
+                                 meta={'current_page': current_comment_page + 1,
                                        'goods_id': goods_id,
                                        'first_id': first_id,'second_id': second_id, 'cluster_id': cluster_id})
 

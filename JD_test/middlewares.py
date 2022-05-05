@@ -4,6 +4,8 @@
 # https://docs.scrapy.org/en/latest/topics/spider-middleware.html
 import logging
 import random
+
+import redis
 import requests
 import re
 from time import sleep
@@ -136,12 +138,12 @@ class RandomUserAgentMiddleware(object):
 class JSPageMiddleware(object):
     # 通过selenium请求动态网页
     def process_request(self, request, spider):
-        # print(request.url.find('list.jd.com'))
         if request.url.find('list.jd.com') != -1 or request.url.find('search.jd.com') != -1:
-            # browser = webdriver.Chrome(executable_path="D:\scrpay_test\chromedriver.exe")
             spider.browser.get(request.url)
+            # 执行代码
             js = "document.documentElement.scrollTop=10000"
             spider.browser.execute_script(js)
+            # 显性等待，直到选择器获取到第60个商品的节点
             wait(spider.browser, 5).until(
                 EC.presence_of_all_elements_located((By.CSS_SELECTOR, '#J_goodsList > ul > li:nth-child(60)'))
             )
@@ -155,7 +157,8 @@ class JSPageMiddleware(object):
             spider.browser.execute_script(js)
             try:
                 wait(spider.browser, 5).until(
-                    EC.presence_of_all_elements_located((By.CSS_SELECTOR, '#product-list > ul > li:nth-child(120)'))
+                    EC.presence_of_all_elements_located((By.CSS_SELECTOR,
+                                                         '#product-list > ul > li:nth-child(120) span.def-price > i'))
                 )
             finally:
                 print("访问:{0}".format(request.url))
@@ -163,17 +166,43 @@ class JSPageMiddleware(object):
                 return HtmlResponse(url=spider.browser.current_url, body=spider.browser.page_source, encoding="utf-8",
                                     request=request)
 
+        # script = '''
+        # function main(splash)
+        #     splash:go(splash.args.url)
+        #     splash:runjs("document.documentElement.scrollTop=10000")
+        #     splash:wait(2)
+        #     return splash:html()
+        # '''
+        # script2 = '''
+        # function main(splash)
+        #     local result, error = splash:wait_for_resume([[
+        #         function main(splash) {
+        #             var checkExist = setInterval(function() {
+        #                 if (document.querySelector("#J_goodsList > ul > li:nth-child(60)")) {
+        #                 clearInterval(checkExist);
+        #                 splash.resume();
+        #                 }
+        #             }, 400);
+        #         }
+        #     ]], 7)
+        #     -- result is {}
+        #     -- error is nil
+        # end
+        # '''
+
 
 class RandomProxyMiddleware(object):
     # 动态设置ip代理
     def process_request(self, request, spider):
         # 当连接失败时使用代理
+        ip_port = 'ng001.weimiaocloud.com:9003'
+        proxy = "http://" + ip_port
         if request.meta.get('retry_times', 0) > 0:
+            # if 'splash' in request['meta']:
+            #     request['meta']['splash']['proxy'] = proxy
             try:
                 # ip = requests.get("http://127.0.0.1:5010/get/?type=https").json().get("proxy")
                 # request.meta["proxy"] = ip
-                ip_port = 'ng001.weimiaocloud.com:9003'
-                proxy = "http://" + ip_port
                 request.meta['proxy'] = proxy
             except Exception as e:
                 pass
@@ -184,8 +213,6 @@ class RandomProxyMiddleware(object):
                 try:
                     # ip = requests.get("http://127.0.0.1:5010/get/?type=https").json().get("proxy")
                     # request.meta["proxy"] = ip
-                    ip_port = 'ng001.weimiaocloud.com:9003'
-                    proxy = "http://" + ip_port
                     request.meta['proxy'] = proxy
                 except Exception as e:
                     pass
@@ -196,8 +223,8 @@ class MyRetryMiddleware(RetryMiddleware):
         if request.meta.get('dont_retry', True):
             return response
         if response.status in self.retry_http_codes:
-            logging.info('响应异常，尝试删除代理延时10s重试')
-            sleep(10)
+            logging.info('响应异常，尝试删除代理延时2s重试')
+            sleep(2)
             try:
                 del request.meta["proxy"]
             except Exception as e:
@@ -211,10 +238,22 @@ class MyRetryMiddleware(RetryMiddleware):
                 isinstance(exception, self.EXCEPTIONS_TO_RETRY)
                 and not request.meta.get('dont_retry', False)
         ):
-            logging.info('出现错误，尝试删除代理延时10s重试')
-            sleep(10)
+            logging.info('出现错误，尝试删除代理延时5s重试')
+            sleep(5)
             try:
                 del request.meta["proxy"]
             except Exception as e:
                 pass
             return self._retry(request, exception, spider)
+
+
+class StatsCollectorMiddleware(object):
+    def __init__(self, host, port, param, settings):
+        self.r = redis.Redis()
+
+    @classmethod
+    def from_settings(cls, settings):
+        host = settings['REDIS_HOST']
+        port = settings['REDIS_PORT']
+        param = settings['REDIS_PARAMS']['password']
+        return cls(host, port, param, settings=settings)

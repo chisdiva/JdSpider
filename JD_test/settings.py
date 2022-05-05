@@ -14,27 +14,18 @@ NEWSPIDER_MODULE = 'JD_test.spiders'
 
 # Enables scheduling storing requests queue in redis.
 SCHEDULER = "scrapy_redis.scheduler.Scheduler"
-SCHEDULER_PERSIST = True
+# SCHEDULER_PERSIST = True
 # Ensure all spiders share same duplicates filter through redis.
 DUPEFILTER_CLASS = "scrapy_redis.dupefilter.RFPDupeFilter"
 
 # Specify the host and port to use when connecting to Redis (optional).
 REDIS_HOST = '1.14.150.188'
 REDIS_PORT = 5546
-
+MAX_IDLE_TIME_BEFORE_CLOSE = 90
 # Custom redis client parameters (i.e.: socket timeout, etc.)
 REDIS_PARAMS = {
     'password': 'rds188525mkLisOQT81'
 }
-
-# QINIU_AK = 'LFtq5gXK_COwULxBqgvZehqWWNrsdTBZ1Dvier6C'
-# QINIU_SK = '76DbjvXSXw3pSdW7SBG4Hm09zhbQZc_Bv3g9hkdP'
-# QINIU_BUCKET = 'jdsp-image'
-# QINIU_DOMAIN = ''
-# QINIU_DEL_SRC = True
-# QINIU_FIELDS = [
-#     'image_url',
-# ]
 
 IMAGES_STORE = 's3://jdsp-image/productImage'
 IMAGES_STORE_S3_ACL = 'public-read'
@@ -59,9 +50,7 @@ custom_settings = {
 #CONCURRENT_REQUESTS = 32
 
 # Configure a delay for requests for the same website (default: 0)
-# See https://docs.scrapy.org/en/latest/topics/settings.html#download-delay
-# See also autothrottle settings and docs
-DOWNLOAD_DELAY = 0.5
+DOWNLOAD_DELAY = 1.5
 DOWNLOAD_TIMEOUT = 10
 # AUTOTHROTTLE_ENABLED = True
 # AUTOTHROTTLE_START_DELAY = 4
@@ -86,15 +75,17 @@ COOKIES_ENABLED = False
 #SPIDER_MIDDLEWARES = {
 #    'JD_test.middlewares.JdTestSpiderMiddleware': 543,
 #}
-
+# SPIDER_MIDDLEWARES = {
+#     'scrapy_splash.SplashDeduplicateArgsMiddleware': 100,
+# }
 # Enable or disable downloader middlewares
 # See https://docs.scrapy.org/en/latest/topics/downloader-middleware.html
 DOWNLOADER_MIDDLEWARES = {
     'JD_test.middlewares.JSPageMiddleware': 1,
     'scrapy.downloadermiddlewares.useragent.UserAgentMiddleware': None,
     'JD_test.middlewares.RandomUserAgentMiddleware': 543,
-    'JD_test.middlewares.RandomProxyMiddleware': 580,
-    'JD_test.middlewares.MyRetryMiddleware': 500
+    'JD_test.middlewares.RandomProxyMiddleware': 722,
+    'JD_test.middlewares.MyRetryMiddleware': 500,
 }
 RETRY_ENABLED = True
 RETRY_HTTP_CODES = [302, 401, 403, 500, 502, 503, 504, 522, 524, 408, 429]
@@ -109,8 +100,7 @@ RETRY_HTTP_CODES = [302, 401, 403, 500, 502, 503, 504, 522, 524, 408, 429]
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
 ITEM_PIPELINES = {
     'JD_test.pipelines.MongoPipeline': 300,
-    'JD_test.pipelines.CategoryPipeline': 305,
-    # 'scrapy_save_to_qiniu.pipelines.SaveToQiniuPipeline': 30,
+    # 'JD_test.pipelines.CategoryPipeline': 305,
     'JD_test.pipelines.CommentContentPipeline': 100,
     'scrapy.pipelines.images.ImagesPipeline': 1,
     'JD_test.pipelines.TimePipeline': 20,
@@ -146,3 +136,11 @@ MONGO_USERNAME = 'txy'
 MONGO_PASSWORD = 'txy188525'
 MONGO_AUTHSOURCE='admin'
 #MONGO_DOCNAME = 'Goods'
+
+# splash options
+# SPLASH_URL = 'http://1.14.150.188:8050'
+# SPLASH_COOKIES_DEBUG = False
+# HTTPCACHE_STORAGE = 'scrapy_splash.SplashAwareFSCacheStorage'
+
+LOG_FILE = "3and4.log"
+# LOG_LEVEL = "INFO"

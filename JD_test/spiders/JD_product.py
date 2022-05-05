@@ -1,9 +1,8 @@
 import logging
 import math
-import pickle
+import os.path
 import time
 
-import pymongo
 import scrapy
 from pydispatch import dispatcher
 from scrapy import signals
@@ -35,8 +34,6 @@ class JdProductSpider(RedisSpider):
     # 指定起始url在Redis中的Key
     redis_key = 'jd_product:start_urls'
 
-    # start_urls = ['https://list.jd.com/list.html?cat=1713%2C3258%2C3297&page={}&s=1&click=0']
-
     def __init__(self, set_page=1, set_comment_page=1, *args, **kwargs):
         # 参数初始化
         self.base_url = ''
@@ -50,6 +47,7 @@ class JdProductSpider(RedisSpider):
         prefs = {"profile.managed_default_content_settings.images": 2}
         self.options.add_experimental_option("prefs", prefs)
         self.options.add_argument('--headless')
+
         self.browser = webdriver.Chrome(executable_path="D:\scrpay_test\chromedriver.exe",
                                         chrome_options=self.options)
         super(JdProductSpider, self).__init__(*args, **kwargs)
@@ -59,29 +57,28 @@ class JdProductSpider(RedisSpider):
         print('spider closed')
         # 关闭spider时退出浏览器
         self.browser.quit()
-        # 关闭spider时发送请求表明爬虫完成
-        # r = requests.get("http://127.0.0.1:7866/spider/finished")
 
-    # def spider_idle(self):
-    #     """
-    #     Schedules a request if available, otherwise waits.
-    #     or close spider when waiting seconds > MAX_IDLE_TIME_BEFORE_CLOSE.
-    #     MAX_IDLE_TIME_BEFORE_CLOSE will not affect SCHEDULER_IDLE_BEFORE_CLOSE.
-    #     """
-    #     if self.server is not None and self.count_size(self.redis_key) > 0:
-    #         self.spider_idle_start_time = int(time.time())
-    #
-    #     self.schedule_next_requests()
-    #
-    #     max_idle_time = self.settings.getint("MAX_IDLE_TIME_BEFORE_CLOSE")
-    #     idle_time = int(time.time()) - self.spider_idle_start_time
-    #     if max_idle_time != 0 and idle_time >= max_idle_time:
-    #         return
-    #     if idle_time >= 90 and self.crawler.stats.get_value('crawled_product_number') > 0:
-    #         # requests.get('http://1.14.150.188:7866/spider/JDClosed', params={'productNum': crawled_product_num,
-    #         #                                                                  'commentsNum': crawled_comments_num})
-    #         return
-    #     raise DontCloseSpider
+
+    def spider_idle(self, spider):
+        """
+        Schedules a request if available, otherwise waits.
+        or close spider when waiting seconds > MAX_IDLE_TIME_BEFORE_CLOSE.
+        MAX_IDLE_TIME_BEFORE_CLOSE will not affect SCHEDULER_IDLE_BEFORE_CLOSE.
+        """
+        # if self.server is not None and self.count_size(self.redis_key) > 0:
+        #     self.spider_idle_start_time = int(time.time())
+
+        self.schedule_next_requests()
+
+        # max_idle_time = self.settings.getint("MAX_IDLE_TIME_BEFORE_CLOSE")
+        # idle_time = int(time.time()) - self.spider_idle_start_time
+        # if max_idle_time != 0 and idle_time >= max_idle_time:
+        #     return
+        # if idle_time >= 90 and self.crawler.stats.get_value('crawled_product_number') > 0:
+        #     # requests.get('http://1.14.150.188:7866/spider/JDClosed', params={'productNum': crawled_product_num,
+        #     #                                                                  'commentsNum': crawled_comments_num})
+        #     return
+        raise DontCloseSpider
 
     def make_request_from_data(self, data):
         """
@@ -97,7 +94,7 @@ class JdProductSpider(RedisSpider):
         self.col_name = url_data['s_category_name'] if 's_category_name' in url_data else url_data['key_word']
         if 'task_id' in url_data:
             self.sp_id = url_data['task_id']
-        return scrapy.Request(self.base_url, callback=self.parse, meta={'list_page': 1})
+        return self.make_requests_from_url(self.base_url)
 
     def parse(self, response):
         # 从结果列表页解析商品数据
@@ -129,7 +126,10 @@ class JdProductSpider(RedisSpider):
             yield scrapy.Request(comment_summary_interface, callback=self.parse_comments, meta={'item': item})
 
         # 构造下一页的链接并生成请求
-        list_page = response.meta['list_page']
+        try:
+            list_page = response.meta['list_page']
+        except Exception as e:
+            list_page = 1
         list_page = list_page + 2
         if list_page < self.set_page * 2:
             next_url = self.base_url + '&page=' + str(list_page)
@@ -143,7 +143,7 @@ class JdProductSpider(RedisSpider):
         except Exception as e:
             raise ResponseFailed
         # 提取评论相关数据
-        comment_item['comment_num'] = jsonpath(result, '$..CommentCountStr')[0]
+        comment_item['comment_num'] = str2num(jsonpath(result, '$..CommentCountStr')[0])
         comment_item['good_comment_rate'] = jsonpath(result, '$..GoodRate')[0]
         comment_item['negative_comment_rate'] = jsonpath(result, '$..PoorRate')[0]
         item['comment_info'] = dict(comment_item)
@@ -154,7 +154,6 @@ class JdProductSpider(RedisSpider):
                                  callback=self.parse_comments_content,
                                  meta={'current_page': 0,
                                        'goods_id': item['id'],
-                                       'comment_array': None,
                                        })
 
         yield item
@@ -166,59 +165,57 @@ class JdProductSpider(RedisSpider):
         try:
             result = json.loads(response.text)
         except Exception as e:
-            comments_content_item = GoodsCommentContent()
-            return comments_content_item
+            # comments_content_item = GoodsCommentContent()
+            # return comments_content_item
+            return
         # 取出评论内容数组
         comments = result['comments']
         # 最大页数
         max_page = int(result['maxPage'])
-
-        if current_comment_page + 1 < self.set_comment_page and current_comment_page + 1 < max_page:
-            # 小于最大页数，则交给提取函数提取内容，然后继续请求
-            comment_array = self.comments_content_extract(comments, response.meta['comment_array'])
-            yield scrapy.Request(url=self.create_comment_interface(goods_id, current_comment_page + 1),
-                                 callback=self.parse_comments_content,
-                                 meta={'comment_array': comment_array, 'current_page': current_comment_page + 1,
-                                       'goods_id': goods_id})
-        else:
-            comment_array = self.comments_content_extract(comments, response.meta['comment_array'])
-            comments_content_item = GoodsCommentContent(id=goods_id, comments_content=comment_array,
+        for i in range(0, len(comments)):
+            comments_content_item = GoodsCommentContent(goods_id=goods_id, comment_id=comments[i]['guid'],
+                                                        comment_content=comments[i]['content'],
+                                                        score=comments[i]['score'],
+                                                        isPlus=comments[i]['plusAvailable'] > 0,
+                                                        userClient=comments[i]['userClient'],
+                                                        create_time=comments[i]['creationTime'],
                                                         task_id=self.sp_id, crawl_time=time.time(),
                                                         prod_class=self.col_name)
             yield comments_content_item
+        if current_comment_page + 1 < self.set_comment_page and current_comment_page + 1 < max_page:
+            # 小于最大页数，则继续请求
+            yield scrapy.Request(url=self.create_comment_interface(goods_id, current_comment_page + 1),
+                                 callback=self.parse_comments_content,
+                                 meta={'current_page': current_comment_page + 1,
+                                       'goods_id': goods_id})
+
+            # comments_content_item = GoodsCommentContent(id=goods_id, comments_content=comment_array,
+            #                                             task_id=self.sp_id, crawl_time=time.time(),
+            #                                             prod_class=self.col_name)
+            # yield comments_content_item
 
     def create_comment_interface(self, goods_id, comment_page):
         comment_interface = 'https://club.jd.com/comment/productPageComments.action?productId={goods_id}&score={score_type}&sortType=6&page={comment_page}&pageSize=10&isShadowSku=0&fold=1'.format(
             goods_id=str(goods_id), score_type=0, comment_page=comment_page)
         return comment_interface
 
-    def comments_content_extract(self, comments, comment_array=None):
+    def comments_content_extract(self, goods_id, comments):
+        logging.info('hahaha提取拉拉阿啦啦啦')
         # 提取评论内容
-        if comment_array is None:
-            comment_array = []
         for i in range(0, len(comments)):
-            comment_array.append({
-                'create_time': comments[i]['creationTime'],
-                'content': comments[i]['content'],
-                'score': comments[i]['score'],
-                'isPlus': comments[i]['plusAvailable'] > 0,
-                'userClient': comments[i]['userClient']
-            })
+            # comment_array.append({
+            #     'create_time': comments[i]['creationTime'],
+            #     'content': comments[i]['content'],
+            #     'score': comments[i]['score'],
+            #     'isPlus': comments[i]['plusAvailable'] > 0,
+            #     'userClient': comments[i]['userClient']
+            # })
+            comments_content_item = GoodsCommentContent(goods_id=goods_id, comment_id=comments[i]['id'],
+                                                        comment_content=comments[i]['content'],score=comments[i]['score'],
+                                                        isPlus=comments[i]['plusAvailable'] > 0,
+                                                        userClient=comments[i]['userClient'],
+                                                        create_time=comments[i]['creationTime'],
+                                                        task_id=self.sp_id, crawl_time=time.time(),
+                                                        prod_class=self.col_name)
+            yield comments_content_item
 
-
-        return comment_array
-
-
-'''
-    def parse_detail(self, response):
-        brand = response.xpath('//ul[contains(@id,"parameter-brand")]/li/a/text()').get()
-        # 构造评论信息接口
-        # score:0为全部评论 3为好评 2为中评 1为差评
-        comment_summary_interface = "https://club.jd.com/comment/productCommentSummaries.action?referenceIds={goods_id}".format(
-            goods_id=response.meta['goods_id']
-        )
-        item = response.meta['item']
-        item['brand'] = brand
-        yield scrapy.Request(comment_summary_interface, callback=self.parse_comments,
-                             meta={'item': item})
-'''

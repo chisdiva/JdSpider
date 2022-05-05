@@ -40,9 +40,9 @@ class Category(scrapy.Item):
 
 
 class GoodsItem(scrapy.Item):
-    # define the fields for your item here like:
-
+    # define the fields for your item here\:
     id = scrapy.Field()  # 商品id
+    cluster = scrapy.Field()  # 苏宁clusterId
     name = scrapy.Field()  # 商品名称
     price = scrapy.Field()  # 商品价格
     shop = scrapy.Field()  # 商品店铺
@@ -62,9 +62,14 @@ class GoodsComment(scrapy.Item):
 
 
 class GoodsCommentContent(scrapy.Item):
-    id = scrapy.Field() # 商品id
+    goods_id = scrapy.Field()  # 商品id
+    comment_id = scrapy.Field()  # 评论id
+    comment_content = scrapy.Field()  # 评论内容
+    score = scrapy.Field()  # 分数
+    create_time = scrapy.Field()  # 创建时间
+    isPlus = scrapy.Field()  # 是否会员
+    userClient = scrapy.Field()  # 来源客户端
     task_id = scrapy.Field() # 任务id
     prod_class = scrapy.Field()  # 任务名称
-    comments_content = scrapy.Field() # 评论内容
     crawl_time = scrapy.Field() # 抓取时间
 
