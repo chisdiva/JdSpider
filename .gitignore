@@ -3,3 +3,4 @@
 /eggs/
 /dbs/
 /build/
+/JD_test/spiders/*.log
