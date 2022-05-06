@@ -24,15 +24,15 @@ REDIS_PORT = 5546
 MAX_IDLE_TIME_BEFORE_CLOSE = 90
 # Custom redis client parameters (i.e.: socket timeout, etc.)
 REDIS_PARAMS = {
-    'password': 'rds188525mkLisOQT81'
+    'password': ''
 }
 
 IMAGES_STORE = 's3://jdsp-image/productImage'
 IMAGES_STORE_S3_ACL = 'public-read'
 AWS_ENDPOINT_URL = 'http://s3-cn-south-1.qiniucs.com'
 IMAGES_EXPIRES = 10
-AWS_ACCESS_KEY_ID = 'LFtq5gXK_COwULxBqgvZehqWWNrsdTBZ1Dvier6C'
-AWS_SECRET_ACCESS_KEY = '76DbjvXSXw3pSdW7SBG4Hm09zhbQZc_Bv3g9hkdP'
+AWS_ACCESS_KEY_ID = ''
+AWS_SECRET_ACCESS_KEY = ''
 AWS_REGION_NAME = 'cn-south-1'
 AWS_USE_SSL = False  # or True (None by default)
 AWS_VERIFY = False  # or True (None by default)
@@ -50,7 +50,7 @@ custom_settings = {
 #CONCURRENT_REQUESTS = 32
 
 # Configure a delay for requests for the same website (default: 0)
-DOWNLOAD_DELAY = 1
+DOWNLOAD_DELAY = 1.5
 DOWNLOAD_TIMEOUT = 10
 # AUTOTHROTTLE_ENABLED = True
 # AUTOTHROTTLE_START_DELAY = 4
@@ -132,15 +132,11 @@ ITEM_PIPELINES = {
 MONGO_HOST = '1.14.150.188'
 MONGO_PORT = 27017
 MONGO_DBNAME = 'JD_test'
-MONGO_USERNAME = 'txy'
-MONGO_PASSWORD = 'txy188525'
-MONGO_AUTHSOURCE='admin'
+MONGO_USERNAME = ''
+MONGO_PASSWORD = ''
+MONGO_AUTHSOURCE=''
 #MONGO_DOCNAME = 'Goods'
 
-# splash options
-# SPLASH_URL = 'http://1.14.150.188:8050'
-# SPLASH_COOKIES_DEBUG = False
-# HTTPCACHE_STORAGE = 'scrapy_splash.SplashAwareFSCacheStorage'
 
-LOG_FILE = "test2.log"
+# LOG_FILE = "3and4.log"
 # LOG_LEVEL = "INFO"
