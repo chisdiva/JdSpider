@@ -1,5 +1,7 @@
 import logging
 import re
+from retrying import retry
+from redis.exceptions import ConnectionError
 
 import scrapy
 from pydispatch import dispatcher
@@ -13,6 +15,11 @@ from JD_test.items import GoodsItem, GoodsComment, GoodsCommentContent
 from scrapy_redis.spiders import RedisSpider
 from scrapy_redis.utils import bytes_to_str
 from scrapy.exceptions import DontCloseSpider
+
+
+def retry_if_redis_error(exception):
+    logging.info('-重试----')
+    return isinstance(exception, ConnectionAbortedError) or isinstance(exception, ConnectionError)
 
 
 class SnProductSpider(RedisSpider):
@@ -42,25 +49,23 @@ class SnProductSpider(RedisSpider):
         # 关闭spider时退出浏览器
         self.browser.quit()
 
+    @retry(wait_fixed=3000, retry_on_exception=retry_if_redis_error)
     def spider_idle(self, spider):
         """
         Schedules a request if available, otherwise waits.
         or close spider when waiting seconds > MAX_IDLE_TIME_BEFORE_CLOSE.
         MAX_IDLE_TIME_BEFORE_CLOSE will not affect SCHEDULER_IDLE_BEFORE_CLOSE.
         """
-        # if self.server is not None and self.count_size(self.redis_key) > 0:
-        #     self.spider_idle_start_time = int(time.time())
+        if self.server is not None and self.count_size(self.redis_key) > 0:
+            self.spider_idle_start_time = int(time.time())
 
         self.schedule_next_requests()
 
-        # max_idle_time = self.settings.getint("MAX_IDLE_TIME_BEFORE_CLOSE")
-        # idle_time = int(time.time()) - self.spider_idle_start_time
-        # if max_idle_time != 0 and idle_time >= max_idle_time:
-        #     return
-        # if idle_time >= 90 and self.crawler.stats.get_value('crawled_product_number') > 0:
-        #     # requests.get('http://1.14.150.188:7866/spider/JDClosed', params={'productNum': crawled_product_num,
-        #     #                                                                  'commentsNum': crawled_comments_num})
-        #     return
+        max_idle_time = self.settings.getint("MAX_IDLE_TIME_BEFORE_CLOSE")
+        idle_time = int(time.time()) - self.spider_idle_start_time
+        if max_idle_time != 0 and idle_time >= max_idle_time:
+            return
+
         raise DontCloseSpider
 
     def make_request_from_data(self, data):

@@ -50,7 +50,7 @@ custom_settings = {
 #CONCURRENT_REQUESTS = 32
 
 # Configure a delay for requests for the same website (default: 0)
-DOWNLOAD_DELAY = 1.5
+DOWNLOAD_DELAY = 1
 DOWNLOAD_TIMEOUT = 10
 # AUTOTHROTTLE_ENABLED = True
 # AUTOTHROTTLE_START_DELAY = 4
@@ -142,5 +142,5 @@ MONGO_AUTHSOURCE='admin'
 # SPLASH_COOKIES_DEBUG = False
 # HTTPCACHE_STORAGE = 'scrapy_splash.SplashAwareFSCacheStorage'
 
-LOG_FILE = "3and4.log"
+LOG_FILE = "test2.log"
 # LOG_LEVEL = "INFO"
