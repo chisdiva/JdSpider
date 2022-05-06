@@ -1,6 +1,7 @@
 import logging
 import re
-from retrying import retry
+import time
+
 from redis.exceptions import ConnectionError
 
 import scrapy
@@ -49,17 +50,21 @@ class SnProductSpider(RedisSpider):
         # 关闭spider时退出浏览器
         self.browser.quit()
 
-    @retry(wait_fixed=3000, retry_on_exception=retry_if_redis_error)
     def spider_idle(self, spider):
         """
         Schedules a request if available, otherwise waits.
         or close spider when waiting seconds > MAX_IDLE_TIME_BEFORE_CLOSE.
         MAX_IDLE_TIME_BEFORE_CLOSE will not affect SCHEDULER_IDLE_BEFORE_CLOSE.
         """
-        if self.server is not None and self.count_size(self.redis_key) > 0:
-            self.spider_idle_start_time = int(time.time())
+        for _ in range(0,5):
+            try:
+                if self.server is not None and self.count_size(self.redis_key) > 0:
+                    self.spider_idle_start_time = int(time.time())
 
-        self.schedule_next_requests()
+                self.schedule_next_requests()
+            except ConnectionError:
+                time.sleep(1)
+                continue
 
         max_idle_time = self.settings.getint("MAX_IDLE_TIME_BEFORE_CLOSE")
         idle_time = int(time.time()) - self.spider_idle_start_time
